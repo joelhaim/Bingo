@@ -78,6 +78,29 @@ textarea.cell::placeholder { color: var(--muted); font-weight: 400; }
 .actions button:focus-visible { outline: 2px solid var(--ink); }
 .actions .danger { color: var(--ink); }
 .confirm { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+/* Groups */
+.groups { display: flex; flex-direction: column; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
+.groups h2 { font-family: var(--display); font-size: 18px; margin: 0; flex: 1 1 auto; }
+.groups .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.groups input, .groups select { flex: 1 1 140px; min-width: 0; font: 500 15px var(--body); color: var(--fg); background: var(--cell); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; }
+.groups input:focus-visible, .groups select:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.gform { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--cell); border-radius: 12px; }
+.gform input { background: var(--card); }
+.ginfo { font-size: 14px; color: var(--muted); }
+.ginfo strong { font-family: var(--display); font-weight: 400; color: var(--fg); letter-spacing: 0.12em; font-size: 16px; }
+.mini-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.mini { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: var(--bg); }
+.mini.won { border-color: var(--win); box-shadow: inset 0 0 0 1px var(--win); }
+.mini-head { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; min-width: 0; }
+.mini-name { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-badge { font-family: var(--display); font-size: 11px; color: var(--win); white-space: nowrap; }
+.mini-count { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mini-title { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
+.mini-cells div { aspect-ratio: 1; border-radius: 4px; background: var(--cell); border: 1px solid var(--line); font-size: 8px; line-height: 1.1; padding: 2px; overflow: hidden; overflow-wrap: break-word; hyphens: auto; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); }
+.mini-cells div.on { background: var(--ink-soft); border-color: transparent; color: #fff; }
+.mini-cells div.w { box-shadow: inset 0 0 0 1.5px var(--win); }
+.mini-empty { font-size: 13px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -134,6 +157,45 @@ textarea.cell::placeholder { color: var(--muted); font-weight: 400; }
     <button id="confirm-yes" type="button" class="btn primary">Erase</button>
     <button id="confirm-no" type="button" class="btn">Cancel</button>
   </div>
+
+  <section id="groups" class="groups" aria-label="Groups" hidden>
+    <div class="row">
+      <h2>Groups</h2>
+      <button id="g-show-create" class="btn" type="button">Create group</button>
+      <button id="g-show-join" class="btn" type="button">Join group</button>
+    </div>
+
+    <div id="g-create" class="gform" hidden>
+      <input id="g-name" maxlength="30" placeholder="Group name, e.g. Saturday crew" aria-label="Group name">
+      <input id="g-myname-c" maxlength="30" placeholder="Your name in the group" aria-label="Your name in the group">
+      <div class="row"><button id="g-create-go" class="btn primary" type="button">Create</button><button class="btn link g-cancel" type="button">Cancel</button></div>
+    </div>
+    <div id="g-join" class="gform" hidden>
+      <input id="g-joincode" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="6-letter group code" aria-label="Group code">
+      <input id="g-myname-j" maxlength="30" placeholder="Your name in the group" aria-label="Your name in the group">
+      <div class="row"><button id="g-join-go" class="btn primary" type="button">Join</button><button class="btn link g-cancel" type="button">Cancel</button></div>
+    </div>
+
+    <div id="g-current" hidden>
+      <div class="row">
+        <select id="g-pick" aria-label="Your groups"></select>
+      </div>
+      <div class="row ginfo">
+        <span>Group code <strong id="g-code"></strong></span>
+        <button id="g-copy" class="btn link" type="button">Copy</button>
+        <span id="g-members"></span>
+        <button id="g-leave" class="btn link" type="button">Leave</button>
+      </div>
+      <div id="g-leave-confirm" class="confirm" hidden>
+        <span>Leave this group?</span>
+        <button id="g-leave-yes" class="btn primary" type="button">Leave</button>
+        <button id="g-leave-no" class="btn" type="button">Cancel</button>
+      </div>
+    </div>
+    <p id="g-none" class="mini-empty">Create a group, then share its code so friends can join. Everyone in a group sees each other's cards.</p>
+    <div id="g-cards" class="mini-grid"></div>
+    <div id="g-status" class="status" role="status"></div>
+  </section>
 </div>
 
 <script src="config.js"></script>
@@ -190,7 +252,7 @@ textarea.cell::placeholder { color: var(--muted); font-weight: 400; }
     if (c.length < 6) { status("Use at least 6 characters. Longer is safer.", true); return; }
     code = c; codeVisible = false;
     try { localStorage.setItem(CODE_KEY, code); } catch (e) {}
-    state.id = null; showAccount(); loadCards();
+    state.id = null; showAccount(); loadCards(); loadGroups(); startPolling();
   });
   $("code").addEventListener("keydown", function (e) { if (e.key === "Enter") $("use-code").click(); });
   $("show-code").addEventListener("click", function () { codeVisible = !codeVisible; showAccount(); });
@@ -198,7 +260,7 @@ textarea.cell::placeholder { color: var(--muted); font-weight: 400; }
     await flushCloud();
     code = null; cards = []; state.id = null; $("code").value = "";
     try { localStorage.removeItem(CODE_KEY); } catch (e) {}
-    saveLocal(); status(""); showAccount();
+    saveLocal(); status(""); groups = []; setGroup(null); $("g-cards").innerHTML = ""; clearInterval(pollTimer); showAccount();
   });
 
   async function loadCards() {
@@ -254,10 +316,136 @@ textarea.cell::placeholder { color: var(--muted); font-weight: 400; }
     var i = cards.findIndex(function (c) { return c.id === row.id; });
     if (i >= 0) cards[i] = row; else cards.unshift(row);
     fillPicker(); status("Saved");
+    if (typeof loadGroupCards === "function" && groupId) loadGroupCards();
   }
 
+  // ---------- groups ----------
+  var GROUP_KEY = "bingo.group", NAME_KEY = "bingo.myname";
+  var groups = [], groupId = null, pollTimer = null;
+  try { groupId = localStorage.getItem(GROUP_KEY); } catch (e) {}
+  try { var nm = localStorage.getItem(NAME_KEY) || ""; $("g-myname-c").value = nm; $("g-myname-j").value = nm; } catch (e) {}
+  var gStatus = function (m, err) { var el = $("g-status"); el.textContent = m || ""; el.className = "status" + (err ? " err" : ""); };
+  function rememberName(n) { try { localStorage.setItem(NAME_KEY, n); } catch (e) {} $("g-myname-c").value = n; $("g-myname-j").value = n; }
+  function setGroup(id) { groupId = id; try { id ? localStorage.setItem(GROUP_KEY, id) : localStorage.removeItem(GROUP_KEY); } catch (e) {} }
+
+  function winSet(marks) {
+    var set = {};
+    lines.forEach(function (l) { if (l.every(function (i) { return marks[i]; })) l.forEach(function (i) { set[i] = true; }); });
+    return set;
+  }
+
+  function showForm(which) {
+    $("g-create").hidden = which !== "create"; $("g-join").hidden = which !== "join";
+    if (which) $(which === "create" ? "g-name" : "g-joincode").focus();
+  }
+  $("g-show-create").addEventListener("click", function () { showForm($("g-create").hidden ? "create" : null); });
+  $("g-show-join").addEventListener("click", function () { showForm($("g-join").hidden ? "join" : null); });
+  document.querySelectorAll(".g-cancel").forEach(function (b) { b.addEventListener("click", function () { showForm(null); }); });
+
+  $("g-create-go").addEventListener("click", async function () {
+    var myName = $("g-myname-c").value.trim();
+    if (!myName) { gStatus("Add your name so others know whose card is whose.", true); return; }
+    await flushCloud(); gStatus("Creating…");
+    var r = await sb.rpc("create_group", { p_code: code, p_group_name: $("g-name").value, p_my_name: myName });
+    if (r.error || !r.data || !r.data[0]) { gStatus("Couldn't create the group: " + cleanErr(r.error), true); return; }
+    rememberName(myName); setGroup(r.data[0].group_id); showForm(null); $("g-name").value = "";
+    await loadGroups();
+    gStatus("Group created. Share the code " + r.data[0].join_code + " with your friends.");
+  });
+  $("g-join-go").addEventListener("click", async function () {
+    var jc = $("g-joincode").value.trim().toUpperCase(), myName = $("g-myname-j").value.trim();
+    if (jc.length !== 6) { gStatus("Group codes are 6 letters and numbers.", true); return; }
+    if (!myName) { gStatus("Add your name so others know whose card is whose.", true); return; }
+    await flushCloud(); gStatus("Joining…");
+    var r = await sb.rpc("join_group", { p_code: code, p_join_code: jc, p_my_name: myName });
+    if (r.error || !r.data || !r.data[0]) { gStatus(r.error && /No group/.test(r.error.message) ? "No group has that code. Check it and try again." : "Couldn't join: " + cleanErr(r.error), true); return; }
+    rememberName(myName); setGroup(r.data[0].group_id); showForm(null); $("g-joincode").value = "";
+    await loadGroups(); gStatus("Joined " + r.data[0].name + ".");
+  });
+
+  async function loadGroups() {
+    if (!sb || !code) return;
+    var r = await sb.rpc("my_groups", { p_code: code });
+    if (r.error) { gStatus("Couldn't load groups: " + cleanErr(r.error), true); return; }
+    groups = r.data || [];
+    if (!groups.some(function (g) { return g.group_id === groupId; })) setGroup(groups.length ? groups[0].group_id : null);
+    var sel = $("g-pick"); sel.innerHTML = "";
+    groups.forEach(function (g) {
+      var o = document.createElement("option"); o.value = g.group_id; o.textContent = g.name + " (as " + g.my_name + ")";
+      if (g.group_id === groupId) o.selected = true; sel.appendChild(o);
+    });
+    renderGroupInfo(); await loadGroupCards();
+  }
+  function renderGroupInfo() {
+    var g = groups.find(function (x) { return x.group_id === groupId; });
+    $("g-current").hidden = !g; $("g-none").hidden = !!g;
+    if (!g) { $("g-cards").innerHTML = ""; return; }
+    $("g-code").textContent = g.join_code;
+    $("g-members").textContent = g.members + (g.members == 1 ? " member" : " members");
+  }
+  $("g-pick").addEventListener("change", function (e) { setGroup(e.target.value); renderGroupInfo(); loadGroupCards(); });
+  $("g-copy").addEventListener("click", function () {
+    var t = $("g-code").textContent;
+    try { navigator.clipboard.writeText(t).then(function () { gStatus("Copied " + t); }, function () { gStatus("Group code: " + t); }); }
+    catch (e) { gStatus("Group code: " + t); }
+  });
+  $("g-leave").addEventListener("click", function () { $("g-leave-confirm").hidden = false; });
+  $("g-leave-no").addEventListener("click", function () { $("g-leave-confirm").hidden = true; });
+  $("g-leave-yes").addEventListener("click", async function () {
+    $("g-leave-confirm").hidden = true;
+    var r = await sb.rpc("leave_group", { p_code: code, p_group_id: groupId });
+    if (r.error) { gStatus("Couldn't leave: " + cleanErr(r.error), true); return; }
+    setGroup(null); await loadGroups(); gStatus("You left the group.");
+  });
+
+  async function loadGroupCards() {
+    if (!sb || !code || !groupId) return;
+    var r = await sb.rpc("group_cards", { p_code: code, p_group_id: groupId });
+    if (r.error) { gStatus("Couldn't load the group's cards: " + cleanErr(r.error), true); return; }
+    var box = $("g-cards"); box.innerHTML = "";
+    (r.data || []).forEach(function (c) {
+      var items = c.items || [], marks = c.marks || [], win = winSet(marks);
+      var won = Object.keys(win).length > 0;
+      var count = marks.filter(Boolean).length;
+      var el = document.createElement("article"); el.className = "mini" + (won ? " won" : "");
+      var head = document.createElement("div"); head.className = "mini-head";
+      var name = document.createElement("span"); name.className = "mini-name"; name.textContent = c.member_name + (c.is_me ? " (you)" : "");
+      var right = document.createElement("span");
+      right.className = won ? "mini-badge" : "mini-count"; right.textContent = won ? "BINGO!" : (c.card_id ? count + "/16" : "");
+      head.appendChild(name); head.appendChild(right); el.appendChild(head);
+      if (!c.card_id) {
+        var p = document.createElement("div"); p.className = "mini-empty"; p.textContent = "No card yet"; el.appendChild(p);
+      } else {
+        var t = document.createElement("div"); t.className = "mini-title"; t.textContent = c.title || "Untitled"; el.appendChild(t);
+        var cells = document.createElement("div"); cells.className = "mini-cells";
+        for (var i = 0; i < 16; i++) {
+          var d = document.createElement("div");
+          d.className = (marks[i] ? "on" : "") + (win[i] ? " w" : "");
+          d.textContent = items[i] || ""; d.title = items[i] || "";
+          cells.appendChild(d);
+        }
+        el.appendChild(cells);
+      }
+      box.appendChild(el);
+    });
+    if ($("g-status").className.indexOf("err") >= 0) gStatus("");
+  }
+
+  function startPolling() {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(function () { if (document.visibilityState === "visible" && groupId) loadGroupCards(); }, 8000);
+  }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && groupId) loadGroupCards(); });
+
+  function showGroups() { $("groups").hidden = !(sb && code); }
+  var _showAccount = showAccount;
+  showAccount = function () { _showAccount(); showGroups(); };
+
+  // Keep this device's storage (your code) from being cleared by the browser.
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {}
+
   showAccount();
-  if (sb && code) loadCards();
+  if (sb && code) { loadCards(); loadGroups(); startPolling(); }
 
   // ---------- board ----------
   var grid = $("grid"), titleEl = $("title"), hint = $("hint"), banner = $("banner");
