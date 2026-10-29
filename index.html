@@ -84,26 +84,22 @@ textarea.cell::placeholder { color: var(--muted); font-weight: 400; }
 <div class="wrap">
 
   <section class="account" aria-label="Account">
-    <!-- Signed out -->
+    <!-- No code yet -->
     <div id="acct-out" hidden>
       <div class="row">
-        <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" aria-label="Email">
-        <button id="send-code" class="btn primary" type="button">Sign in to sync</button>
+        <input id="code" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="60" placeholder="Your personal code" aria-label="Your personal code">
+        <button id="use-code" class="btn primary" type="button">Open my cards</button>
       </div>
-    </div>
-    <!-- Waiting for code -->
-    <div id="acct-code" hidden>
       <div class="row">
-        <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="Code from email" aria-label="Code from email">
-        <button id="verify" class="btn primary" type="button">Verify</button>
-        <button id="cancel-code" class="btn link" type="button">Use another email</button>
+        <button id="make-code" class="btn link" type="button">Make me a code</button>
       </div>
     </div>
-    <!-- Signed in -->
+    <!-- Code in use -->
     <div id="acct-in" hidden>
       <div class="row">
         <span id="who" class="who"></span>
-        <button id="sign-out" class="btn link" type="button">Sign out</button>
+        <button id="show-code" class="btn link" type="button">Show</button>
+        <button id="forget-code" class="btn link" type="button">Use another code</button>
       </div>
       <div class="row">
         <select id="card-pick" aria-label="Your cards"></select>
@@ -159,58 +155,61 @@ textarea.cell::placeholder { color: var(--muted); font-weight: 400; }
   } catch (e) {}
   function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 
-  // ---------- Supabase ----------
+  // ---------- Supabase (personal code) ----------
   var cfg = window.BINGO_CONFIG || {};
-  var sb = null, user = null, cards = [];
+  var CODE_KEY = "bingo.code";
+  var sb = null, code = null, cards = [], codeVisible = false;
   if (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase) {
-    sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" }
-    });
+    sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   }
+  try { code = localStorage.getItem(CODE_KEY); } catch (e) {}
   var $ = function (id) { return document.getElementById(id); };
   var statusEl = $("status");
   function status(msg, err) { statusEl.textContent = msg || ""; statusEl.className = "status" + (err ? " err" : ""); }
+  function cleanErr(e) { return (e && e.message || "Something went wrong").replace(/^.*?Code must/, "Code must"); }
 
   function showAccount() {
     var acct = document.querySelector(".account");
     if (!sb) { acct.hidden = true; return; }
-    $("acct-out").hidden = !!user || pendingEmail !== null;
-    $("acct-code").hidden = !!user || pendingEmail === null;
-    $("acct-in").hidden = !user;
-    if (user) $("who").textContent = "Signed in as " + user.email;
+    $("acct-out").hidden = !!code;
+    $("acct-in").hidden = !code;
+    if (code) {
+      $("who").textContent = "Code: " + (codeVisible ? code : code.slice(0, 2) + "•••••");
+      $("show-code").textContent = codeVisible ? "Hide" : "Show";
+    }
   }
-  var pendingEmail = null;
 
-  $("send-code").addEventListener("click", async function () {
-    var email = $("email").value.trim();
-    if (!/^\S+@\S+\.\S+$/.test(email)) { status("Enter a valid email address.", true); return; }
-    status("Sending…");
-    var r = await sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: location.origin + location.pathname } });
-    if (r.error) { status(r.error.message, true); return; }
-    pendingEmail = email; showAccount();
-    status("Check your email. Tap the link, or type the code here.");
-    $("code").focus();
+  var words = ["tiger","maple","comet","pepper","river","lemon","otter","cactus","rocket","velvet","mango","harbor","pixel","cobalt","willow","falcon","ember","juniper","koala","nova","quartz","sable","tulip","zephyr"];
+  $("make-code").addEventListener("click", function () {
+    var a = new Uint32Array(3); crypto.getRandomValues(a);
+    $("code").value = words[a[0] % words.length] + "-" + words[a[1] % words.length] + "-" + (10 + a[2] % 90);
+    status("Write this code down. It's the only way to get your cards back on another device.");
   });
-  $("verify").addEventListener("click", async function () {
-    var token = $("code").value.trim();
-    if (!token) { status("Type the code from the email.", true); return; }
-    status("Checking…");
-    var r = await sb.auth.verifyOtp({ email: pendingEmail, token: token, type: "email" });
-    if (r.error) { status(r.error.message, true); return; }
-    pendingEmail = null; status("");
+  $("use-code").addEventListener("click", function () {
+    var c = $("code").value.trim().toLowerCase();
+    if (c.length < 6) { status("Use at least 6 characters. Longer is safer.", true); return; }
+    code = c; codeVisible = false;
+    try { localStorage.setItem(CODE_KEY, code); } catch (e) {}
+    state.id = null; showAccount(); loadCards();
   });
-  $("cancel-code").addEventListener("click", function () { pendingEmail = null; status(""); showAccount(); });
-  $("sign-out").addEventListener("click", async function () { await sb.auth.signOut(); state.id = null; saveLocal(); });
+  $("code").addEventListener("keydown", function (e) { if (e.key === "Enter") $("use-code").click(); });
+  $("show-code").addEventListener("click", function () { codeVisible = !codeVisible; showAccount(); });
+  $("forget-code").addEventListener("click", async function () {
+    await flushCloud();
+    code = null; cards = []; state.id = null; $("code").value = "";
+    try { localStorage.removeItem(CODE_KEY); } catch (e) {}
+    saveLocal(); status(""); showAccount();
+  });
 
   async function loadCards() {
-    var r = await sb.from("cards").select("id,title,items,marks,updated_at").order("updated_at", { ascending: false });
-    if (r.error) { status("Couldn't load your cards: " + r.error.message, true); return; }
+    status("Loading your cards…");
+    var r = await sb.rpc("list_cards", { p_code: code });
+    if (r.error) { status("Couldn't load cards: " + cleanErr(r.error), true); return; }
     cards = r.data || [];
-    if (!cards.length) { await saveCloud(true); return; }     // first sign-in: upload the current card
+    if (!cards.length) { await saveCloud(true); status("New code. Your current card is saved under it."); return; }
     var current = state.id && cards.find(function (c) { return c.id === state.id; });
-    if (!current) current = cards[0];
-    applyCard(current);
-    fillPicker();
+    applyCard(current || cards[0]);
+    fillPicker(); status("Loaded " + cards.length + (cards.length === 1 ? " card" : " cards"));
   }
   function applyCard(c) {
     state.id = c.id; state.title = c.title;
@@ -237,34 +236,28 @@ textarea.cell::placeholder { color: var(--muted); font-weight: 400; }
   });
 
   var timer = null;
-  function saveCloudSoon() { if (!sb || !user) return; clearTimeout(timer); status("Saving…"); timer = setTimeout(saveCloud, 800); }
+  function saveCloudSoon() { if (!sb || !code) return; clearTimeout(timer); status("Saving…"); timer = setTimeout(saveCloud, 800); }
   async function flushCloud() { if (timer) { clearTimeout(timer); timer = null; await saveCloud(); } }
   async function saveCloud(isNew) {
     timer = null;
-    if (!sb || !user) return;
-    var row = { title: state.title || "Untitled", items: state.items, marks: state.marks, updated_at: new Date().toISOString() };
-    if (state.id && !isNew) row.id = state.id;
-    var r = state.id && !isNew
-      ? await sb.from("cards").update(row).eq("id", state.id).select().single()
-      : await sb.from("cards").insert(row).select().single();
-    if (r.error) { status("Not saved: " + r.error.message, true); return; }
-    state.id = r.data.id; saveLocal();
-    var i = cards.findIndex(function (c) { return c.id === r.data.id; });
-    if (i >= 0) cards[i] = r.data; else cards.unshift(r.data);
-    fillPicker();
-    status(navigator.onLine === false ? "Offline. Saved on this device." : "Saved");
+    if (!sb || !code) return;
+    var r = await sb.rpc("save_card", {
+      p_code: code, p_id: isNew ? null : state.id,
+      p_title: state.title || "Untitled", p_items: state.items, p_marks: state.marks
+    });
+    if (r.error || !r.data || !r.data[0]) {
+      status(navigator.onLine === false ? "Offline. Saved on this device." : "Not saved: " + cleanErr(r.error), navigator.onLine !== false);
+      return;
+    }
+    var row = r.data[0];
+    state.id = row.id; saveLocal();
+    var i = cards.findIndex(function (c) { return c.id === row.id; });
+    if (i >= 0) cards[i] = row; else cards.unshift(row);
+    fillPicker(); status("Saved");
   }
 
-  if (sb) {
-    sb.auth.onAuthStateChange(function (_evt, session) {
-      var was = user && user.id;
-      user = session ? session.user : null;
-      showAccount();
-      if (user && user.id !== was) setTimeout(loadCards, 0);
-      if (!user) { cards = []; }
-    });
-  }
   showAccount();
+  if (sb && code) loadCards();
 
   // ---------- board ----------
   var grid = $("grid"), titleEl = $("title"), hint = $("hint"), banner = $("banner");
@@ -323,7 +316,7 @@ textarea.cell::placeholder { color: var(--muted); font-weight: 400; }
     state.items = new Array(16).fill(""); state.marks = blankMarks(); state.mode = "edit";
     confirmBox.hidden = true; changed(); render();
   });
-  window.addEventListener("online", function () { if (user) saveCloud(); });
+  window.addEventListener("online", function () { if (code) saveCloud(); });
 
   render();
 
